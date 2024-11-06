@@ -1,0 +1,5 @@
+# PDFs
+*.pdf
+
+# Tests
+reco_test.py
