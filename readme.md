@@ -20,7 +20,12 @@ h5py
 ## Usage
 The script can be used by:
 ```
-python3 reco.py <path_to_hdf5>
+python3 reco.py [-h] [--rotation ROTATION] [--full2d] [--full3d] runpath
 ```
-The `path_to_hdf5` is a path to an Hdf5 file that was already processed
-with the reconstruction of [TimepixAnalysis](https://github.com/Vindaar/TimepixAnalysis). It stores the results in the same HDF5 file.
+The `runpath` is a path to an Hdf5 file that was already processed with the
+reconstruction of [TimepixAnalysis](https://github.com/Vindaar/TimepixAnalysis).
+It stores the results in the same HDF5 file.
+Additionally there are the following optional parameters:
+- `rotation` Rotation of the input coordinates in the xy plane with respect to the x axis. Given in degrees.
+- `full2d` Analyze Timepix3 data only in 2D.
+- `full3d` Analyze Timepix3 data in the full 3D approach instead of 3D for the first step and 2D for the second step.

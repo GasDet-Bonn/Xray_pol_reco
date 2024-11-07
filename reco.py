@@ -4,6 +4,7 @@ import multiprocessing
 import sys
 import os
 import h5py
+import argparse
 
 def reco(coords, charges, phi_1 = None):
     # Calculate the center of charge for 2D or 3D and shift the coordinates by the center of charge
@@ -107,31 +108,39 @@ def reco_tpx(x, y, charges):
         return np.nan, np.nan, np.empty(0), np.empty(0)
 
 # Two step reconstruction for Timepix3 data
-def reco_tpx3(x, y, toa, ftoa, charges):
+def reco_tpx3(x, y, toa, ftoa, charges, full3d):
     try:
         z = ((toa * 25 + 1) - ftoa * 1.5625)*8.3/55.
         phi_1, theta_1, d_i_left_indices, d_i_right_indices, m3, xc, yc, zc, m3_z, d_i_upper_indices, d_i_lower_indices = reco(np.array([x, y, z]), charges)
         # Decide based on the third moment which part to keep. m3 is the 3rd moment in the xy plane, m3_z for the full 3D information
         if m3 <= 0:
             if m3_z <= 0:
-                #phi_2, theta_2, d_i_left_indices2, d_i_right_indices2, m32, xc2, yc2, zc2, m32_z, d_i_upper_indices2, d_i_lower_indices2 = reco(np.array([x[np.intersect1d(d_i_left_indices, d_i_upper_indices)], y[np.intersect1d(d_i_left_indices, d_i_upper_indices)], z[np.intersect1d(d_i_left_indices, d_i_upper_indices)]]), charges[np.intersect1d(d_i_left_indices, d_i_upper_indices)], phi_1)
-                phi_2, theta_2, d_i_left_indices2, d_i_right_indices2, m32, xc2, yc2, zc2, m32_z, d_i_upper_indices2, d_i_lower_indices2 = reco(np.array([x[np.intersect1d(d_i_left_indices, d_i_upper_indices)], y[np.intersect1d(d_i_left_indices, d_i_upper_indices)]]), charges[np.intersect1d(d_i_left_indices, d_i_upper_indices)], phi_1)
+                if full3d:
+                    phi_2, theta_2, d_i_left_indices2, d_i_right_indices2, m32, xc2, yc2, zc2, m32_z, d_i_upper_indices2, d_i_lower_indices2 = reco(np.array([x[np.intersect1d(d_i_left_indices, d_i_upper_indices)], y[np.intersect1d(d_i_left_indices, d_i_upper_indices)], z[np.intersect1d(d_i_left_indices, d_i_upper_indices)]]), charges[np.intersect1d(d_i_left_indices, d_i_upper_indices)], phi_1)
+                else:
+                    phi_2, theta_2, d_i_left_indices2, d_i_right_indices2, m32, xc2, yc2, zc2, m32_z, d_i_upper_indices2, d_i_lower_indices2 = reco(np.array([x[np.intersect1d(d_i_left_indices, d_i_upper_indices)], y[np.intersect1d(d_i_left_indices, d_i_upper_indices)]]), charges[np.intersect1d(d_i_left_indices, d_i_upper_indices)], phi_1)
                 start_indices = np.intersect1d(d_i_left_indices, d_i_upper_indices)
                 end_indices = np.setdiff1d(np.arange(len(x)), start_indices)
             else:
-                #phi_2, theta_2, d_i_left_indices2, d_i_right_indices2, m32, xc2, yc2, zc2, m32_z, d_i_upper_indices2, d_i_lower_indices2 = reco(np.array([x[np.intersect1d(d_i_left_indices, d_i_lower_indices)], y[np.intersect1d(d_i_left_indices, d_i_lower_indices)], z[np.intersect1d(d_i_left_indices, d_i_lower_indices)]]), charges[np.intersect1d(d_i_left_indices, d_i_lower_indices)], phi_1)
-                phi_2, theta_2, d_i_left_indices2, d_i_right_indices2, m32, xc2, yc2, zc2, m32_z, d_i_upper_indices2, d_i_lower_indices2 = reco(np.array([x[np.intersect1d(d_i_left_indices, d_i_lower_indices)], y[np.intersect1d(d_i_left_indices, d_i_lower_indices)]]), charges[np.intersect1d(d_i_left_indices, d_i_lower_indices)], phi_1)
+                if full3d:
+                    phi_2, theta_2, d_i_left_indices2, d_i_right_indices2, m32, xc2, yc2, zc2, m32_z, d_i_upper_indices2, d_i_lower_indices2 = reco(np.array([x[np.intersect1d(d_i_left_indices, d_i_lower_indices)], y[np.intersect1d(d_i_left_indices, d_i_lower_indices)], z[np.intersect1d(d_i_left_indices, d_i_lower_indices)]]), charges[np.intersect1d(d_i_left_indices, d_i_lower_indices)], phi_1)
+                else:
+                    phi_2, theta_2, d_i_left_indices2, d_i_right_indices2, m32, xc2, yc2, zc2, m32_z, d_i_upper_indices2, d_i_lower_indices2 = reco(np.array([x[np.intersect1d(d_i_left_indices, d_i_lower_indices)], y[np.intersect1d(d_i_left_indices, d_i_lower_indices)]]), charges[np.intersect1d(d_i_left_indices, d_i_lower_indices)], phi_1)
                 start_indices = np.intersect1d(d_i_left_indices, d_i_lower_indices)
                 end_indices = np.setdiff1d(np.arange(len(x)), start_indices)
         else:
             if m3_z <= 0:
-                #phi_2, theta_2, d_i_left_indices2, d_i_right_indices2, m32, xc2, yc2, zc2, m32_z, d_i_upper_indices2, d_i_lower_indices2 = reco(np.array([x[np.intersect1d(d_i_right_indices, d_i_upper_indices)], y[np.intersect1d(d_i_right_indices, d_i_upper_indices)], z[np.intersect1d(d_i_right_indices, d_i_upper_indices)]]), charges[np.intersect1d(d_i_right_indices, d_i_upper_indices)], phi_1)
-                phi_2, theta_2, d_i_left_indices2, d_i_right_indices2, m32, xc2, yc2, zc2, m32_z, d_i_upper_indices2, d_i_lower_indices2 = reco(np.array([x[np.intersect1d(d_i_right_indices, d_i_upper_indices)], y[np.intersect1d(d_i_right_indices, d_i_upper_indices)]]), charges[np.intersect1d(d_i_right_indices, d_i_upper_indices)], phi_1)
+                if full3d:
+                    phi_2, theta_2, d_i_left_indices2, d_i_right_indices2, m32, xc2, yc2, zc2, m32_z, d_i_upper_indices2, d_i_lower_indices2 = reco(np.array([x[np.intersect1d(d_i_right_indices, d_i_upper_indices)], y[np.intersect1d(d_i_right_indices, d_i_upper_indices)], z[np.intersect1d(d_i_right_indices, d_i_upper_indices)]]), charges[np.intersect1d(d_i_right_indices, d_i_upper_indices)], phi_1)
+                else:
+                    phi_2, theta_2, d_i_left_indices2, d_i_right_indices2, m32, xc2, yc2, zc2, m32_z, d_i_upper_indices2, d_i_lower_indices2 = reco(np.array([x[np.intersect1d(d_i_right_indices, d_i_upper_indices)], y[np.intersect1d(d_i_right_indices, d_i_upper_indices)]]), charges[np.intersect1d(d_i_right_indices, d_i_upper_indices)], phi_1)
                 start_indices = np.intersect1d(d_i_right_indices, d_i_upper_indices)
                 end_indices = np.setdiff1d(np.arange(len(x)), start_indices)
             else:
-                #phi_2, theta_2, d_i_left_indices2, d_i_right_indices2, m32, xc2, yc2, zc2, m32_z, d_i_upper_indices2, d_i_lower_indices2 = reco(np.array([x[np.intersect1d(d_i_right_indices, d_i_lower_indices)], y[np.intersect1d(d_i_right_indices, d_i_lower_indices)], z[np.intersect1d(d_i_right_indices, d_i_lower_indices)]]), charges[np.intersect1d(d_i_right_indices, d_i_lower_indices)], phi_1)
-                phi_2, theta_2, d_i_left_indices2, d_i_right_indices2, m32, xc2, yc2, zc2, m32_z, d_i_upper_indices2, d_i_lower_indices2 = reco(np.array([x[np.intersect1d(d_i_right_indices, d_i_lower_indices)], y[np.intersect1d(d_i_right_indices, d_i_lower_indices)]]), charges[np.intersect1d(d_i_right_indices, d_i_lower_indices)], phi_1)
+                if full3d:
+                    phi_2, theta_2, d_i_left_indices2, d_i_right_indices2, m32, xc2, yc2, zc2, m32_z, d_i_upper_indices2, d_i_lower_indices2 = reco(np.array([x[np.intersect1d(d_i_right_indices, d_i_lower_indices)], y[np.intersect1d(d_i_right_indices, d_i_lower_indices)], z[np.intersect1d(d_i_right_indices, d_i_lower_indices)]]), charges[np.intersect1d(d_i_right_indices, d_i_lower_indices)], phi_1)
+                else:
+                    phi_2, theta_2, d_i_left_indices2, d_i_right_indices2, m32, xc2, yc2, zc2, m32_z, d_i_upper_indices2, d_i_lower_indices2 = reco(np.array([x[np.intersect1d(d_i_right_indices, d_i_lower_indices)], y[np.intersect1d(d_i_right_indices, d_i_lower_indices)]]), charges[np.intersect1d(d_i_right_indices, d_i_lower_indices)], phi_1)
                 start_indices = np.intersect1d(d_i_right_indices, d_i_lower_indices)
                 end_indices = np.setdiff1d(np.arange(len(x)), start_indices)
         if phi_2 == 0 or phi_2 == np.pi or phi_2 == -np.pi or phi_2 == np.pi/2 or phi_2 == -np.pi/2: 
@@ -148,12 +157,23 @@ def tpx3_wrapper(inputs):
     return reco_tpx3(*inputs)
 
 def main():
-    # Get the HDF5 file of interest
-    run = sys.argv[1]
+    # Get the arguments
+    parser = argparse.ArgumentParser(description='Angular reconstruction of Timepix and Timepix3 polarimetry data')
+    parser.add_argument('runpath', type=str, help='Path to the hdf5 file')
+    parser.add_argument('--rotation', type=float, help='Rotation of the input coordinates in the xy plane with respect to the x axis. Given in degrees.', default=0)
+    parser.add_argument('--full2d', action='store_true', help='Analyze Timepix3 data only in 2D')
+    parser.add_argument('--full3d', action='store_true', help='Analyze Timepix3 data in the full 3D approach instead of 3D for the first step and 2D for the second step')
+    args = parser.parse_args()
+
+    # Process the arguments
+    run = args.runpath
     if run.endswith('h5'):
         datafile = os.path.basename(run)
     else:
         print("Please choose a correct data file")
+    angle_offset = args.rotation
+    tpx3_2d = args.full2d
+    tpx3_full3d = args.full3d
 
     # Open the corresponding datafile
     f = h5py.File(run, 'r+')
@@ -165,7 +185,7 @@ def main():
         # Load the x and y coordinates of the pixel with the option to rotate
         posx_raw = f.get('reconstruction/' + name + '/chip_0/x')[:]
         posy_raw = f.get('reconstruction/' + name + '/chip_0/y')[:]
-        rot = np.radians(90)
+        rot = np.radians(angle_offset)
         posx = posx_raw * np.cos(rot) - posy_raw * np.sin(rot)
         posy = posx_raw * np.sin(rot) + posy_raw * np.cos(rot)
 
@@ -181,7 +201,7 @@ def main():
             charge = f.get('reconstruction/' + name + '/chip_0/ToT')[:]
 
         print(timepix_version)
-        if timepix_version == 'Timepix1':
+        if timepix_version == 'Timepix1' or tpx3_2d:
             inputs = list(zip(posx, posy, charge))
             # Perform the reconstruction per event in multithreading
             with multiprocessing.Pool(processes=8) as pool:
@@ -197,7 +217,7 @@ def main():
             end = results[:, 3]
 
         elif timepix_version == 'Timepix3':
-            inputs = list(zip(posx, posy, toa, ftoa, charge))
+            inputs = list(zip(posx, posy, toa, ftoa, charge, [tpx3_full3d]*len(posx)))
             # Perform the reconstruction per event in multithreading
             with multiprocessing.Pool(processes=8) as pool:
                 results = list(tqdm(pool.imap(tpx3_wrapper, inputs), total=len(inputs)))
