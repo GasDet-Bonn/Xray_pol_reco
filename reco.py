@@ -160,72 +160,65 @@ def main():
     filename = datafile.replace('.h5', '')
 
     timepix_version = f['reconstruction'].attrs['TimepixVersion'][0].decode('utf-8')
-    if timepix_version == 'Timepix1':
-        #runnumber = filename.replace('run', '')
-        runnumber = str(33)
-    elif timepix_version == 'Timepix3':
-        runnumber = str(0)
-    else:
-        print("Found no valid Timepix version in the hdf5 file. Exiting now...")
-        quit()
+    reconstruction = f['reconstruction']
+    for name in reconstruction:
+        # Load the x and y coordinates of the pixel with the option to rotate
+        posx_raw = f.get('reconstruction/' + name + '/chip_0/x')[:]
+        posy_raw = f.get('reconstruction/' + name + '/chip_0/y')[:]
+        rot = np.radians(90)
+        posx = posx_raw * np.cos(rot) - posy_raw * np.sin(rot)
+        posy = posx_raw * np.sin(rot) + posy_raw * np.cos(rot)
 
-    # Load the x and y coordinates of the pixel with the option to rotate
-    posx_raw = f.get('reconstruction/run_' + runnumber + '/chip_0/x')[:]
-    posy_raw = f.get('reconstruction/run_' + runnumber + '/chip_0/y')[:]
-    rot = np.radians(90)
-    posx = posx_raw * np.cos(rot) - posy_raw * np.sin(rot)
-    posy = posx_raw * np.sin(rot) + posy_raw * np.cos(rot)
+        # Fot Timepix3 use additionally the timestamp per pixel
+        if timepix_version == 'Timepix3':
+            toa = f.get('reconstruction/' + name + '/chip_0/ToA')[:]
+            ftoa = f.get('reconstruction/' + name + '/chip_0/fToA')[:]
 
-    # Fot Timepix3 use additionally the timestamp per pixel
-    if timepix_version == 'Timepix3':
-        toa = f.get('reconstruction/run_' + runnumber + '/chip_0/ToA')[:]
-        ftoa = f.get('reconstruction/run_' + runnumber + '/chip_0/fToA')[:]
+        # If there is calibrated charge data use it, otherwise use the ToT
+        try:
+            charge = f.get('reconstruction/' + name + '/chip_0/charge')[:]
+        except:
+            charge = f.get('reconstruction/' + name + '/chip_0/ToT')[:]
 
-    # If there is calibrated charge data use it, otherwise use the ToT
-    try:
-        charge = f.get('reconstruction/run_' + runnumber + '/chip_0/charge')[:]
-    except:
-        charge = f.get('reconstruction/run_' + runnumber + '/chip_0/ToT')[:]
+        print(timepix_version)
+        if timepix_version == 'Timepix1':
+            inputs = list(zip(posx, posy, charge))
+            # Perform the reconstruction per event in multithreading
+            with multiprocessing.Pool(processes=8) as pool:
+                results = list(tqdm(pool.imap(tpx_wrapper, inputs), total=len(inputs)))
+            pool.close()
+            pool.join()
 
-    print(timepix_version)
-    if timepix_version == 'Timepix1':
-        inputs = list(zip(posx, posy, charge))
-        # Perform the reconstruction per event in multithreading
-        with multiprocessing.Pool(processes=8) as pool:
-            results = list(tqdm(pool.imap(tpx_wrapper, inputs), total=len(inputs)))
-        pool.close()
-        pool.join()
+            # Split up the results in separate arrays
+            results = np.array(results, dtype=object)
+            phi1 = np.array(results[:, 0], dtype=np.float64)
+            phi2 = np.array(results[:, 1], dtype=np.float64)
+            start = results[:, 2]
+            end = results[:, 3]
 
-        # Split up the results in separate arrays
-        results = np.array(results, dtype=object)
-        phi1 = np.array(results[:, 0], dtype=np.float64)
-        phi2 = np.array(results[:, 1], dtype=np.float64)
-        start = results[:, 2]
-        end = results[:, 3]
+        elif timepix_version == 'Timepix3':
+            inputs = list(zip(posx, posy, toa, ftoa, charge))
+            # Perform the reconstruction per event in multithreading
+            with multiprocessing.Pool(processes=8) as pool:
+                results = list(tqdm(pool.imap(tpx3_wrapper, inputs), total=len(inputs)))
+            pool.close()
+            pool.join()
 
-    elif timepix_version == 'Timepix3':
-        inputs = list(zip(posx, posy, toa, ftoa, charge))
-        # Perform the reconstruction per event in multithreading
-        with multiprocessing.Pool(processes=8) as pool:
-            results = list(tqdm(pool.imap(tpx3_wrapper, inputs), total=len(inputs)))
-        pool.close()
-        pool.join()
+            # Split up the results in separate arrays
+            results = np.array(results, dtype=object)
+            phi1 = np.array(results[:, 0], dtype=np.float64)
+            phi2 = np.array(results[:, 1], dtype=np.float64)
+            start = results[:, 2]
+            end = results[:, 3]
 
-        # Split up the results in separate arrays
-        results = np.array(results, dtype=object)
-        phi1 = np.array(results[:, 0], dtype=np.float64)
-        phi2 = np.array(results[:, 1], dtype=np.float64)
-        start = results[:, 2]
-        end = results[:, 3]
-
-    # Save data to the hdf5 file
-    f.create_dataset('reconstruction/run_' + runnumber + '/chip_0/angle_fiststage', data=phi1)
-    f.create_dataset('reconstruction/run_' + runnumber + '/chip_0/angle_secondstage', data=phi2)
-    dt = h5py.special_dtype(vlen=np.dtype('float64'))
-    f.create_dataset('reconstruction/run_' + runnumber + '/chip_0/start_indices', (len(start),), dtype=dt)
-    f['reconstruction/run_' + runnumber + '/chip_0/start_indices'][...] = start
-    f.create_dataset('reconstruction/run_' + runnumber + '/chip_0/end_indices', (len(end),), dtype=dt)
-    f['reconstruction/run_' + runnumber + '/chip_0/end_indices'][...] = end
+        # Save data to the hdf5 file
+        f.create_dataset('reconstruction/' + name + '/chip_0/angle_fiststage', data=phi1)
+        f.create_dataset('reconstruction/' + name + '/chip_0/angle_secondstage', data=phi2)
+        dt = h5py.special_dtype(vlen=np.dtype('float64'))
+        f.create_dataset('reconstruction/' + name + '/chip_0/start_indices', (len(start),), dtype=dt)
+        f['reconstruction/' + name + '/chip_0/start_indices'][...] = start
+        f.create_dataset('reconstruction/' + name + '/chip_0/end_indices', (len(end),), dtype=dt)
+        f['reconstruction/' + name + '/chip_0/end_indices'][...] = end
 
 if __name__ == "__main__":
     main()
