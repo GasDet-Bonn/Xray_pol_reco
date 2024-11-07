@@ -165,6 +165,9 @@ def main():
     parser.add_argument('--full3d', action='store_true', help='Analyze Timepix3 data in the full 3D approach instead of 3D for the first step and 2D for the second step')
     args = parser.parse_args()
 
+    if args.full2d and args.full3d:
+        parser.error('You can not use the options --full2d and --full3d at the same time.')
+
     # Process the arguments
     run = args.runpath
     if run.endswith('h5'):
