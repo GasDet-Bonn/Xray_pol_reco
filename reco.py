@@ -156,6 +156,23 @@ def tpx_wrapper(inputs):
 def tpx3_wrapper(inputs):
     return reco_tpx3(*inputs)
 
+def write_dataset(h5file, path, data, overwrite=False, dtype=None):
+    # Check if dataset already exists
+    if path in h5file:
+        if overwrite:
+            # Delete dataset if overwrite option is true
+            del h5file[path]
+        else:
+            # Raise an error is dataset exists but overwrite is false
+            raise ValueError(f"Error: Dataset {path} exists and overwrite is set to False.")
+    
+    # Write data
+    if dtype:
+        h5file.create_dataset(path, (len(data),), dtype=dtype)
+        h5file[path][...] = data
+    else:
+        h5file.create_dataset(path, data=data)
+
 def main():
     # Get the arguments
     parser = argparse.ArgumentParser(description='Angular reconstruction of Timepix and Timepix3 polarimetry data')
@@ -163,6 +180,7 @@ def main():
     parser.add_argument('--rotation', type=float, help='Rotation of the input coordinates in the xy plane with respect to the x axis. Given in degrees.', default=0)
     parser.add_argument('--full2d', action='store_true', help='Analyze Timepix3 data only in 2D')
     parser.add_argument('--full3d', action='store_true', help='Analyze Timepix3 data in the full 3D approach instead of 3D for the first step and 2D for the second step')
+    parser.add_argument('--overwrite', action='store_true', help='If the hdf5 file already contains reconstructed angular data, this option activates overwriting it.')
     args = parser.parse_args()
 
     if args.full2d and args.full3d:
@@ -234,14 +252,20 @@ def main():
             start = results[:, 2]
             end = results[:, 3]
 
-        # Save data to the hdf5 file
-        f.create_dataset('reconstruction/' + name + '/chip_0/angle_fiststage', data=phi1)
-        f.create_dataset('reconstruction/' + name + '/chip_0/angle_secondstage', data=phi2)
+        dataset_path_fiststage = f'reconstruction/{name}/chip_0/angle_fiststage'
+        dataset_path_secondstage = f'reconstruction/{name}/chip_0/angle_secondstage'
+        dataset_path_indices_start = f'reconstruction/{name}/chip_0/start_indices'
+        dataset_path_indices_end = f'reconstruction/{name}/chip_0/end_indices'
         dt = h5py.special_dtype(vlen=np.dtype('float64'))
-        f.create_dataset('reconstruction/' + name + '/chip_0/start_indices', (len(start),), dtype=dt)
-        f['reconstruction/' + name + '/chip_0/start_indices'][...] = start
-        f.create_dataset('reconstruction/' + name + '/chip_0/end_indices', (len(end),), dtype=dt)
-        f['reconstruction/' + name + '/chip_0/end_indices'][...] = end
+
+        # Save data to the hdf5 file
+        try:
+            write_dataset(f, dataset_path_fiststage, phi1, overwrite=args.overwrite)
+            write_dataset(f, dataset_path_secondstage, phi2, overwrite=args.overwrite)
+            write_dataset(f, dataset_path_indices_start, start, overwrite=args.overwrite, dtype=dt)
+            write_dataset(f, dataset_path_indices_end, start, overwrite=args.overwrite, dtype=dt)
+        except ValueError as e:
+            print(e)
 
 if __name__ == "__main__":
     main()
