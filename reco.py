@@ -221,11 +221,14 @@ def main():
         except:
             charge = f.get('reconstruction/' + name + '/chip_0/ToT')[:]
 
+        # Get the number of cpu cores for the multiprocessing
+        num_threads = multiprocessing.cpu_count()
+
         print(timepix_version)
         if timepix_version == 'Timepix1' or tpx3_2d:
             inputs = list(zip(posx, posy, charge))
             # Perform the reconstruction per event in multithreading
-            with multiprocessing.Pool(processes=8) as pool:
+            with multiprocessing.Pool(processes=num_threads) as pool:
                 results = list(tqdm(pool.imap(tpx_wrapper, inputs), total=len(inputs)))
             pool.close()
             pool.join()
@@ -240,7 +243,7 @@ def main():
         elif timepix_version == 'Timepix3':
             inputs = list(zip(posx, posy, toa, ftoa, charge, [tpx3_full3d]*len(posx)))
             # Perform the reconstruction per event in multithreading
-            with multiprocessing.Pool(processes=8) as pool:
+            with multiprocessing.Pool(processes=num_threads) as pool:
                 results = list(tqdm(pool.imap(tpx3_wrapper, inputs), total=len(inputs)))
             pool.close()
             pool.join()
