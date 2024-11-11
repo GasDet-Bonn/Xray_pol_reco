@@ -25,7 +25,7 @@ def reco(coords, charges, phi_1 = None):
     # Get the eigenvalues and eigenvectors for the covariance matrix
     eigenvalues, eigenvectors = np.linalg.eig(M)
 
-    # The axis that minimises the second moment corresponds to the eigenvector with the biggest eigenvalue
+    # The axis that maximises the second moment corresponds to the eigenvector with the biggest eigenvalue
     principal_axis = eigenvectors[:, np.argmax(eigenvalues)]
 
     # Project the new axis on the xy plane and calculate its angle to the x axis
@@ -33,15 +33,15 @@ def reco(coords, charges, phi_1 = None):
     angle = np.arctan2(projection_xy[1], projection_xy[0])
 
     # Project the data points on the projection of the axis in the xy plane
-    projection_xy_fit = np.dot(np.vstack((x_pos, y_pos)).T - center[:2], principal_axis[:2])
+    projection_xy_fit = np.dot(X[:2].T, principal_axis[:2])
 
     # Calculate the skewness in the xy plane
-    skewness_xy = np.sum(charges * (projection_xy_fit - np.average(projection_xy_fit, weights=charges))**3) / np.sum(charges)
+    skewness_xy = np.sum(charges * projection_xy_fit**3) / np.sum(charges)
 
     # For the 3D case project the data points also on the 3D axis and calculate the skewness for this
     if coords.shape[0] == 3:
-        projection_new_plane = np.dot(coords.T - center, principal_axis)
-        skewness_new_plane = np.sum(charges * (projection_new_plane - np.average(projection_new_plane, weights=charges))**3) / np.sum(charges)
+        projection_new_plane = np.dot(X.T, principal_axis)
+        skewness_new_plane = np.sum(charges * projection_new_plane**3) / np.sum(charges)
     else:
         skewness_new_plane = 0
         angle_new_plane = 0
