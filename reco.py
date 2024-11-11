@@ -108,9 +108,9 @@ def reco_tpx(x, y, charges):
         return np.nan, np.nan, np.empty(0), np.empty(0)
 
 # Two step reconstruction for Timepix3 data
-def reco_tpx3(x, y, toa, ftoa, charges, full3d):
+def reco_tpx3(x, y, toa, ftoa, charges, full3d, velocity):
     try:
-        z = ((toa * 25 + 1) - ftoa * 1.5625)*8.3/55.
+        z = ((toa * 25 + 1) - ftoa * 1.5625)*velocity/55.
         phi_1, theta_1, d_i_left_indices, d_i_right_indices, m3, xc, yc, zc, m3_z, d_i_upper_indices, d_i_lower_indices = reco(np.array([x, y, z]), charges)
         # Decide based on the third moment which part to keep. m3 is the 3rd moment in the xy plane, m3_z for the full 3D information
         if m3 <= 0:
@@ -177,6 +177,7 @@ def main():
     # Get the arguments
     parser = argparse.ArgumentParser(description='Angular reconstruction of Timepix and Timepix3 polarimetry data')
     parser.add_argument('runpath', type=str, help='Path to the hdf5 file')
+    parser.add_argument('--velocity', type=float, help='Drift velocity of electrons in the drift field in µm/ns. Default is 1 µm/ns. Only influences 3D reconstruction.', default=1)
     parser.add_argument('--rotation', type=float, help='Rotation of the input coordinates in the xy plane with respect to the x axis. Given in degrees.', default=0)
     parser.add_argument('--full2d', action='store_true', help='Analyze Timepix3 data only in 2D')
     parser.add_argument('--full3d', action='store_true', help='Analyze Timepix3 data in the full 3D approach instead of 3D for the first step and 2D for the second step')
@@ -195,6 +196,7 @@ def main():
     angle_offset = args.rotation
     tpx3_2d = args.full2d
     tpx3_full3d = args.full3d
+    velocity = args.velocity
 
     # Open the corresponding datafile
     f = h5py.File(run, 'r+')
@@ -241,7 +243,7 @@ def main():
             end = results[:, 3]
 
         elif timepix_version == 'Timepix3':
-            inputs = list(zip(posx, posy, toa, ftoa, charge, [tpx3_full3d]*len(posx)))
+            inputs = list(zip(posx, posy, toa, ftoa, charge, [tpx3_full3d]*len(posx), [velocity]*len(posx)))
             # Perform the reconstruction per event in multithreading
             with multiprocessing.Pool(processes=num_threads) as pool:
                 results = list(tqdm(pool.imap(tpx3_wrapper, inputs), total=len(inputs)))
