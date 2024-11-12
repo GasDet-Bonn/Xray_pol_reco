@@ -257,7 +257,7 @@ def main():
             start = results[:, 2]
             end = results[:, 3]
 
-        dataset_path_fiststage = f'reconstruction/{name}/chip_0/angle_fiststage'
+        dataset_path_firststage = f'reconstruction/{name}/chip_0/angle_firststage'
         dataset_path_secondstage = f'reconstruction/{name}/chip_0/angle_secondstage'
         dataset_path_indices_start = f'reconstruction/{name}/chip_0/start_indices'
         dataset_path_indices_end = f'reconstruction/{name}/chip_0/end_indices'
@@ -265,7 +265,7 @@ def main():
 
         # Save data to the hdf5 file
         try:
-            write_dataset(f, dataset_path_fiststage, phi1, overwrite=args.overwrite)
+            write_dataset(f, dataset_path_firststage, phi1, overwrite=args.overwrite)
             write_dataset(f, dataset_path_secondstage, phi2, overwrite=args.overwrite)
             write_dataset(f, dataset_path_indices_start, start, overwrite=args.overwrite, dtype=dt)
             write_dataset(f, dataset_path_indices_end, start, overwrite=args.overwrite, dtype=dt)
