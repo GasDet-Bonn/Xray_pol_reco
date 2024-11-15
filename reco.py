@@ -268,7 +268,7 @@ def main():
             write_dataset(f, dataset_path_firststage, phi1, overwrite=args.overwrite)
             write_dataset(f, dataset_path_secondstage, phi2, overwrite=args.overwrite)
             write_dataset(f, dataset_path_indices_start, start, overwrite=args.overwrite, dtype=dt)
-            write_dataset(f, dataset_path_indices_end, start, overwrite=args.overwrite, dtype=dt)
+            write_dataset(f, dataset_path_indices_end, end, overwrite=args.overwrite, dtype=dt)
         except ValueError as e:
             print(e)
 
