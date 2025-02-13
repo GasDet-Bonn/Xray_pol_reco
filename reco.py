@@ -116,14 +116,13 @@ def copy_hdf5_file(source_file, destination_file, nodes_to_copy=None):
         return angle, angle_new_plane, left_indices, right_indices, skewness_xy, center[0], center[1], 0, 0, 0, 0
 
 # Two step reconstruction for Timepix data
-def reco_tpx(x, y, charges):
+def reco_tpx(x, y, charges_raw, matrix):
     phi_1, _, d_i_left_indices, d_i_right_indices, m3, xc, yc, _, _, _, _ = reco(np.array([x, y]), charges)
     try:
-        # Decide based on the third moment which part to keep
-        if m3 <= 0:
-            phi_2, _, d_i_left_indices2, d_i_right_indices2, m32, xc2, yc2, _, _, _, _ = reco(np.array([x[d_i_left_indices], y[d_i_left_indices]]), charges[d_i_left_indices], phi_1)
-            start_indices = d_i_left_indices
-            end_indices = d_i_right_indices
+        if matrix:
+            charges = charges_raw * matrix[np.array(y, dtype=int), np.array(x, dtype=int)]
+        else:
+            charges = charges_raw
         else:
             phi_2, _, d_i_left_indices2, d_i_right_indices2, m32, xc2, yc2, _, _, _, _ = reco(np.array([x[d_i_right_indices], y[d_i_right_indices]]), charges[d_i_right_indices], phi_1)
             start_indices = d_i_right_indices
@@ -136,8 +135,12 @@ def reco_tpx(x, y, charges):
         return np.nan, np.nan, np.empty(0), np.empty(0)
 
 # Two step reconstruction for Timepix3 data
-def reco_tpx3(x, y, toa, ftoa, charges, full3d, velocity):
+def reco_tpx3(x, y, toa, ftoa, charges_raw, full3d, velocity, matrix):
     try:
+        if matrix is not None:
+            charges = charges_raw * matrix[np.array(y, dtype=int), np.array(x, dtype=int)]
+        else:
+            charges = charges_raw
         z = ((toa * 25 + 1) - ftoa * 1.5625)*velocity/55.
         phi_1, theta_1, d_i_left_indices, d_i_right_indices, m3, xc, yc, zc, m3_z, d_i_upper_indices, d_i_lower_indices = reco(np.array([x, y, z]), charges)
         # Decide based on the third moment which part to keep. m3 is the 3rd moment in the xy plane, m3_z for the full 3D information
@@ -211,6 +214,8 @@ def main():
     parser.add_argument('--full2d', action='store_true', help='Analyze Timepix3 data only in 2D')
     parser.add_argument('--full3d', action='store_true', help='Analyze Timepix3 data in the full 3D approach instead of 3D for the first step and 2D for the second step')
     parser.add_argument('--overwrite', action='store_true', help='If the hdf5 file already contains reconstructed angular data, this option activates overwriting it.')
+    parser.add_argument('--weights', type=str, help='Path to a txt file that contains a 256 by 256 matrix with weights for all pixels.')
+    parser.add_argument('--iweights', type=str, help='Path to a txt file that contains a 256 by 256 matrix with weights for all pixels. The weights are inverted')
     parser.add_argument('--output', type=str, help='Instead of storing the data in the input datafile the data is stored in a given output file.')
     args = parser.parse_args()
 
@@ -232,6 +237,26 @@ def main():
     # Open the corresponding datafile
     f = h5py.File(run, 'r+')
     filename = datafile.replace('.h5', '')
+
+    if args.weights and args.iweights:
+        print("You can not use 'weights' and 'iweights' at the same time")
+        return
+    if args.weights:
+        path = args.weights
+        matrix = np.loadtxt(path, delimiter='\t')
+        matrix = matrix / np.nanmedian(matrix)
+        matrix[np.where(matrix == np.inf)] = 0
+        matrix = np.nan_to_num(matrix, nan=0.0)
+        matrix = matrix
+    elif args.iweights:
+        path = args.iweights
+        matrix = np.loadtxt(path, delimiter='\t')
+        matrix = np.nanmean(matrix) / matrix
+        matrix[np.where(matrix == np.inf)] = 0
+        matrix = np.nan_to_num(matrix, nan=0.0)
+        matrix = matrix
+    else:
+        matrix = None
 
     if args.shiftcenter:
         x_shift, y_shift = args.shiftcenter
@@ -278,7 +303,7 @@ def main():
 
         print(timepix_version)
         if timepix_version == 'Timepix1' or tpx3_2d:
-            inputs = list(zip(posx, posy, charge))
+            inputs = list(zip(posx, posy, charge, [matrix]*len(posx)))
             # Perform the reconstruction per event in multithreading
             with multiprocessing.Pool(processes=num_threads) as pool:
                 results = list(tqdm(pool.imap(tpx_wrapper, inputs), total=len(inputs)))
@@ -293,7 +318,7 @@ def main():
             end = results[:, 3]
 
         elif timepix_version == 'Timepix3':
-            inputs = list(zip(posx, posy, toa, ftoa, charge, [tpx3_full3d]*len(posx), [velocity]*len(posx)))
+            inputs = list(zip(posx, posy, toa, ftoa, charge, [tpx3_full3d]*len(posx), [velocity]*len(posx), [matrix]*len(posx)))
             # Perform the reconstruction per event in multithreading
             with multiprocessing.Pool(processes=num_threads) as pool:
                 results = list(tqdm(pool.imap(tpx3_wrapper, inputs), total=len(inputs)))
