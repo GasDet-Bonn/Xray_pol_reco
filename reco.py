@@ -35,6 +35,7 @@ def copy_hdf5_file(source_file, destination_file, nodes_to_copy=None):
             # Start copying from the root group with first_level flag
             recursive_copy(src, dst, first_level=True)
 
+def reco(coords, charges, radius_min = None, radius_max = None, phi_1 = None):
     # Calculate the center of charge for 2D or 3D and shift the coordinates by the center of charge
     if coords.shape[0] == 2:
         x_pos, y_pos = coords
@@ -110,76 +111,124 @@ def copy_hdf5_file(source_file, destination_file, nodes_to_copy=None):
             else:
                 angle = np.pi + angle
 
-    if coords.shape[0] == 3:
-        return angle, angle_new_plane, left_indices, right_indices, skewness_xy, center[0], center[1], center[2], skewness_new_plane, upper_indices, lower_indices
+        return angle, angle_new_plane, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    # Decide based on the third moment which part to keep. skewness_xy is the 3rd moment in the xy plane, skewness_new_plane for the full 3D information
+    if skewness_xy <= 0:
+        if coords.shape[0] == 3:
+            if skewness_new_plane <= 0:
+                start_indices = np.intersect1d(left_indices, upper_indices)
+                end_indices = np.setdiff1d(np.arange(len(x_pos)), start_indices)
+            else:
+                start_indices = np.intersect1d(left_indices, lower_indices)
+                end_indices = np.setdiff1d(np.arange(len(x_pos)), start_indices)
+        else:
+            start_indices = left_indices
+            end_indices = right_indices
     else:
-        return angle, angle_new_plane, left_indices, right_indices, skewness_xy, center[0], center[1], 0, 0, 0, 0
+        if coords.shape[0] == 3:
+            if skewness_new_plane <= 0:
+                start_indices = np.intersect1d(right_indices, upper_indices)
+                end_indices = np.setdiff1d(np.arange(len(x_pos)), start_indices)
+            else:
+                start_indices = np.intersect1d(right_indices, lower_indices)
+                end_indices = np.setdiff1d(np.arange(len(x_pos)), start_indices)
+        else:
+            start_indices = right_indices
+            end_indices = left_indices
+
+    if coords.shape[0] == 3:
+        m2_max = np.sum(charges * np.power(projection_new_plane, 2)) / np.sum(charges)
+        m2_min = np.sum(charges * np.power(np.dot(X.T, eigenvectors[:, np.argmin(eigenvalues)]), 2)) / np.sum(charges)
+        quality = m2_max / m2_min
+    else:
+        m2_max = np.sum(charges * np.power(projection_xy_fit, 2)) / np.sum(charges)
+        projection_min = eigenvectors[:, np.argmin(eigenvalues)]
+        m2_min = np.sum(charges * np.power(np.dot(X[:2].T, projection_min[:2]), 2)) / np.sum(charges)
+        quality = m2_max / m2_min
+
+    # Additional selection of start pixel based on a radius around the center of charge.
+    # The radius is normalised to the second moment to reduce the energy dependence of it.
+    if radius_min is not None and radius_max is not None:
+        if coords.shape[0] == 3:
+            radii = np.power(x_pos - center[0], 2) + np.power(y_pos-center[1], 2) + np.power(z_pos-center[2], 2)
+        else:
+            radii = np.power(x_pos - center[0], 2) + np.power(y_pos-center[1], 2)
+        circle_indices_inner = np.where(radii > np.power(radius_min * np.sqrt(m2_max), 2))[0]
+        circle_indices_outer = np.where(radii < np.power(radius_max * np.sqrt(m2_max), 2))[0]
+        circle_indices = np.intersect1d(circle_indices_inner, circle_indices_outer)
+        absorption_indices = np.array(np.intersect1d(start_indices, circle_indices), dtype=int)
+        absorption_point_x = np.average(x_pos[absorption_indices], weights=charges[absorption_indices])
+        absorption_point_y = np.average(y_pos[absorption_indices], weights=charges[absorption_indices])
+        if coords.shape[0] == 3:
+            absorption_point_z = np.average(z_pos[absorption_indices], weights=charges[absorption_indices])
+    else:
+        absorption_point_x = np.nan
+        absorption_point_y = np.nan
+        absorption_point_z = np.nan
+
+    if coords.shape[0] == 3:
+        return angle, angle_new_plane, start_indices, end_indices, skewness_xy, center[0], center[1], center[2], skewness_new_plane, absorption_point_x, absorption_point_y, absorption_point_z, quality
+    else:
+        return angle, angle_new_plane, start_indices, end_indices, skewness_xy, center[0], center[1], 0, 0, absorption_point_x, absorption_point_y, 0, quality
 
 # Two step reconstruction for Timepix data
-def reco_tpx(x, y, charges_raw, matrix):
-    phi_1, _, d_i_left_indices, d_i_right_indices, m3, xc, yc, _, _, _, _ = reco(np.array([x, y]), charges)
+def reco_tpx(x, y, charges_raw, matrix, radius_min, radius_max, weighting):
     try:
         if matrix:
             charges = charges_raw * matrix[np.array(y, dtype=int), np.array(x, dtype=int)]
         else:
             charges = charges_raw
+        phi_1, _, start_indices, end_indices, m3, xc, yc, _, _, absorption_point_x, absorption_point_y, _, quality = reco(np.array([x, y]), charges, radius_min=radius_min, radius_max=radius_max)
+        if weighting:
+            # Perform the second step with all pixels but weight the charges by the distance to the absorption point
+            distance = np.sqrt(np.power(x-absorption_point_x, 2) + np.power(y-absorption_point_y, 2))
+            weighted_charges = charges * np.exp(-(distance/weighting))
+            phi_2, _, _, _, _, xc2, yc2, _, _, _, _, _, _ = reco(np.array([x, y]), weighted_charges, phi_1=phi_1)
         else:
-            phi_2, _, d_i_left_indices2, d_i_right_indices2, m32, xc2, yc2, _, _, _, _ = reco(np.array([x[d_i_right_indices], y[d_i_right_indices]]), charges[d_i_right_indices], phi_1)
-            start_indices = d_i_right_indices
-            end_indices = d_i_left_indices
-        if phi_2 == 0 or phi_2 == np.pi or phi_2 == -np.pi or phi_2 == np.pi/2 or phi_2 == -np.pi/2: 
-            return np.nan, np.nan, np.empty(0), np.empty(0)
+            # Perform the second step with the start pixels
+            phi_2, _, _, _, _, xc2, yc2, _, _, _, _, _, _ = reco(np.array([x[start_indices], y[start_indices]]), charges[start_indices], phi_1=phi_1)
+        if radius_min is None and radius_max is None:
+            absorption_point_x = xc2
+            absorption_point_y = yc2
+        if phi_2 == 0 or phi_2 == np.pi or phi_2 == -np.pi or phi_2 == np.pi/2 or phi_2 == -np.pi/2 or phi_2 == np.pi/4 or phi_2 == -np.pi/4 or phi_2 == 3*np.pi/4 or phi_2 == -3*np.pi/4: 
+            return np.nan, np.nan, np.empty(0), np.empty(0), np.nan, np.nan, np.nan
         else:
-            return phi_1, phi_2, start_indices, end_indices
-    except:
-        return np.nan, np.nan, np.empty(0), np.empty(0)
+            return phi_1, phi_2, start_indices, end_indices, absorption_point_x, absorption_point_y, quality
+        return np.nan, np.nan, np.empty(0), np.empty(0), np.nan, np.nan, np.nan
 
 # Two step reconstruction for Timepix3 data
-def reco_tpx3(x, y, toa, ftoa, charges_raw, full3d, velocity, matrix):
+def reco_tpx3(x, y, toa, ftoa, charges_raw, full3d, velocity, matrix, radius_min, radius_max, weighting):
     try:
         if matrix is not None:
             charges = charges_raw * matrix[np.array(y, dtype=int), np.array(x, dtype=int)]
         else:
             charges = charges_raw
         z = ((toa * 25 + 1) - ftoa * 1.5625)*velocity/55.
-        phi_1, theta_1, d_i_left_indices, d_i_right_indices, m3, xc, yc, zc, m3_z, d_i_upper_indices, d_i_lower_indices = reco(np.array([x, y, z]), charges)
-        # Decide based on the third moment which part to keep. m3 is the 3rd moment in the xy plane, m3_z for the full 3D information
-        if m3 <= 0:
-            if m3_z <= 0:
-                if full3d:
-                    phi_2, theta_2, d_i_left_indices2, d_i_right_indices2, m32, xc2, yc2, zc2, m32_z, d_i_upper_indices2, d_i_lower_indices2 = reco(np.array([x[np.intersect1d(d_i_left_indices, d_i_upper_indices)], y[np.intersect1d(d_i_left_indices, d_i_upper_indices)], z[np.intersect1d(d_i_left_indices, d_i_upper_indices)]]), charges[np.intersect1d(d_i_left_indices, d_i_upper_indices)], phi_1)
-                else:
-                    phi_2, theta_2, d_i_left_indices2, d_i_right_indices2, m32, xc2, yc2, zc2, m32_z, d_i_upper_indices2, d_i_lower_indices2 = reco(np.array([x[np.intersect1d(d_i_left_indices, d_i_upper_indices)], y[np.intersect1d(d_i_left_indices, d_i_upper_indices)]]), charges[np.intersect1d(d_i_left_indices, d_i_upper_indices)], phi_1)
-                start_indices = np.intersect1d(d_i_left_indices, d_i_upper_indices)
-                end_indices = np.setdiff1d(np.arange(len(x)), start_indices)
+        phi_1, theta_1, start_indices, end_indices, m3, xc, yc, zc, m3_z, absorption_point_x, absorption_point_y, absorption_point_z, quality = reco(np.array([x, y, z]), charges, radius_min=radius_min, radius_max=radius_max)
+        if weighting:
+            # Perform the second step with all pixels but weight the charges by the distance to the absorption poisnt
+            if full3d:
+                distance = np.sqrt(np.power(x-absorption_point_x, 2) + np.power(y-absorption_point_y, 2), + np.power(z-absorption_point_z, 2))
+                weighted_charges = charges * np.exp(-(distance/weighting))
+                phi_2, theta_2, _, _, _, xc2, yc2, _, _, _, _, _, _ = reco(np.array([x, y, z]), weighted_charges, phi_1=phi_1)
             else:
-                if full3d:
-                    phi_2, theta_2, d_i_left_indices2, d_i_right_indices2, m32, xc2, yc2, zc2, m32_z, d_i_upper_indices2, d_i_lower_indices2 = reco(np.array([x[np.intersect1d(d_i_left_indices, d_i_lower_indices)], y[np.intersect1d(d_i_left_indices, d_i_lower_indices)], z[np.intersect1d(d_i_left_indices, d_i_lower_indices)]]), charges[np.intersect1d(d_i_left_indices, d_i_lower_indices)], phi_1)
-                else:
-                    phi_2, theta_2, d_i_left_indices2, d_i_right_indices2, m32, xc2, yc2, zc2, m32_z, d_i_upper_indices2, d_i_lower_indices2 = reco(np.array([x[np.intersect1d(d_i_left_indices, d_i_lower_indices)], y[np.intersect1d(d_i_left_indices, d_i_lower_indices)]]), charges[np.intersect1d(d_i_left_indices, d_i_lower_indices)], phi_1)
-                start_indices = np.intersect1d(d_i_left_indices, d_i_lower_indices)
-                end_indices = np.setdiff1d(np.arange(len(x)), start_indices)
+                distance = np.sqrt(np.power(x-absorption_point_x, 2) + np.power(y-absorption_point_y, 2))
+                weighted_charges = charges * np.exp(-(distance/weighting))
+                phi_2, theta_2, _, _, _, xc2, yc2, _, _, _, _, _, _ = reco(np.array([x, y]), weighted_charges, phi_1=phi_1)
         else:
-            if m3_z <= 0:
-                if full3d:
-                    phi_2, theta_2, d_i_left_indices2, d_i_right_indices2, m32, xc2, yc2, zc2, m32_z, d_i_upper_indices2, d_i_lower_indices2 = reco(np.array([x[np.intersect1d(d_i_right_indices, d_i_upper_indices)], y[np.intersect1d(d_i_right_indices, d_i_upper_indices)], z[np.intersect1d(d_i_right_indices, d_i_upper_indices)]]), charges[np.intersect1d(d_i_right_indices, d_i_upper_indices)], phi_1)
-                else:
-                    phi_2, theta_2, d_i_left_indices2, d_i_right_indices2, m32, xc2, yc2, zc2, m32_z, d_i_upper_indices2, d_i_lower_indices2 = reco(np.array([x[np.intersect1d(d_i_right_indices, d_i_upper_indices)], y[np.intersect1d(d_i_right_indices, d_i_upper_indices)]]), charges[np.intersect1d(d_i_right_indices, d_i_upper_indices)], phi_1)
-                start_indices = np.intersect1d(d_i_right_indices, d_i_upper_indices)
-                end_indices = np.setdiff1d(np.arange(len(x)), start_indices)
+            # Perform the second step with the start pixels
+            if full3d:
+                phi_2, theta_2, _, _, _, xc2, yc2, _, _, _, _, _, _ = reco(np.array([x[start_indices], y[start_indices], z[start_indices]]), charges[start_indices], phi_1=phi_1)
             else:
-                if full3d:
-                    phi_2, theta_2, d_i_left_indices2, d_i_right_indices2, m32, xc2, yc2, zc2, m32_z, d_i_upper_indices2, d_i_lower_indices2 = reco(np.array([x[np.intersect1d(d_i_right_indices, d_i_lower_indices)], y[np.intersect1d(d_i_right_indices, d_i_lower_indices)], z[np.intersect1d(d_i_right_indices, d_i_lower_indices)]]), charges[np.intersect1d(d_i_right_indices, d_i_lower_indices)], phi_1)
-                else:
-                    phi_2, theta_2, d_i_left_indices2, d_i_right_indices2, m32, xc2, yc2, zc2, m32_z, d_i_upper_indices2, d_i_lower_indices2 = reco(np.array([x[np.intersect1d(d_i_right_indices, d_i_lower_indices)], y[np.intersect1d(d_i_right_indices, d_i_lower_indices)]]), charges[np.intersect1d(d_i_right_indices, d_i_lower_indices)], phi_1)
-                start_indices = np.intersect1d(d_i_right_indices, d_i_lower_indices)
-                end_indices = np.setdiff1d(np.arange(len(x)), start_indices)
-        if phi_2 == 0 or phi_2 == np.pi or phi_2 == -np.pi or phi_2 == np.pi/2 or phi_2 == -np.pi/2: 
-            return np.nan, np.nan, np.empty(0), np.empty(0)
+                phi_2, theta_2, _, _, _, xc2, yc2, _, _, _, _, _, _ = reco(np.array([x[start_indices], y[start_indices]]), charges[start_indices], phi_1=phi_1)
+        if radius_min is None and radius_max is None:
+            absorption_point_x = xc2
+            absorption_point_y = yc2
+        if phi_2 == 0 or phi_2 == np.pi or phi_2 == -np.pi or phi_2 == np.pi/2 or phi_2 == -np.pi/2 or phi_2 == np.pi/4 or phi_2 == -np.pi/4 or phi_2 == 3*np.pi/4 or phi_2 == -3*np.pi/4: 
+            return np.nan, np.nan, np.nan, np.nan, np.empty(0), np.empty(0), np.nan, np.nan, np.nan
         else:
-            return phi_1, phi_2, start_indices, end_indices
-    except:
-        return np.nan, np.nan, np.empty(0), np.empty(0)
+            return phi_1, phi_2, theta_1, theta_2, start_indices, end_indices, absorption_point_x, absorption_point_y, quality
+        return np.nan, np.nan, np.nan, np.nan, np.empty(0), np.empty(0), np.nan, np.nan, np.nan
 
 def tpx_wrapper(inputs):
     return reco_tpx(*inputs)
@@ -213,6 +262,8 @@ def main():
     parser.add_argument('--shiftcenter', type=float, nargs=2, help='Shift each hit by x/y pixels.', default=None)
     parser.add_argument('--full2d', action='store_true', help='Analyze Timepix3 data only in 2D')
     parser.add_argument('--full3d', action='store_true', help='Analyze Timepix3 data in the full 3D approach instead of 3D for the first step and 2D for the second step')
+    parser.add_argument('--radius', type=float, nargs=2, help='Set the lower and upper normalised radius for the pixel selection around the center of charge in the first step.', default=None)
+    parser.add_argument('--weighting', type=float, help='Instead of cutting pixels for the second step weight them to by the distance to the absorption point. Requires radius argument.')
     parser.add_argument('--overwrite', action='store_true', help='If the hdf5 file already contains reconstructed angular data, this option activates overwriting it.')
     parser.add_argument('--weights', type=str, help='Path to a txt file that contains a 256 by 256 matrix with weights for all pixels.')
     parser.add_argument('--iweights', type=str, help='Path to a txt file that contains a 256 by 256 matrix with weights for all pixels. The weights are inverted')
@@ -257,6 +308,16 @@ def main():
         matrix = matrix
     else:
         matrix = None
+
+    if args.weighting and not args.radius:
+        print("When the argument 'weighting' is used, also 'radius' must be used.")
+        return
+
+    if args.radius:
+        radius_min, radius_max = args.radius
+    else:
+        radius_min = None
+        radius_max = None
 
     if args.shiftcenter:
         x_shift, y_shift = args.shiftcenter
@@ -303,7 +364,7 @@ def main():
 
         print(timepix_version)
         if timepix_version == 'Timepix1' or tpx3_2d:
-            inputs = list(zip(posx, posy, charge, [matrix]*len(posx)))
+            inputs = list(zip(posx, posy, charge, [matrix]*len(posx), [radius_min]*len(posx), [radius_max]*len(posx), [args.weighting]*len(posx)))
             # Perform the reconstruction per event in multithreading
             with multiprocessing.Pool(processes=num_threads) as pool:
                 results = list(tqdm(pool.imap(tpx_wrapper, inputs), total=len(inputs)))
@@ -318,7 +379,7 @@ def main():
             end = results[:, 3]
 
         elif timepix_version == 'Timepix3':
-            inputs = list(zip(posx, posy, toa, ftoa, charge, [tpx3_full3d]*len(posx), [velocity]*len(posx), [matrix]*len(posx)))
+            inputs = list(zip(posx, posy, toa, ftoa, charge, [tpx3_full3d]*len(posx), [velocity]*len(posx), [matrix]*len(posx), [radius_min]*len(posx), [radius_max]*len(posx), [args.weighting]*len(posx)))
             # Perform the reconstruction per event in multithreading
             with multiprocessing.Pool(processes=num_threads) as pool:
                 results = list(tqdm(pool.imap(tpx3_wrapper, inputs), total=len(inputs)))

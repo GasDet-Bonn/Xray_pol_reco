@@ -20,7 +20,7 @@ h5py
 ## Usage
 The script can be used by:
 ```
-usage: reco.py [-h] [--velocity VELOCITY] [--rotation ROTATION] [--shiftcenter X Y] [--full2d] [--full3d] [--overwrite] [--weights FILE] [--iweights FILE] [--output FILE] runpath
+usage: reco.py [-h] [--velocity VELOCITY] [--rotation ROTATION] [--shiftcenter X Y] [--full2d] [--full3d] [--radius INNER OUTER] [--weighting WEIGHT] [--overwrite] [--weights FILE] [--iweights FILE] [--output FILE] runpath
 ```
 The `runpath` is a path to an Hdf5 file that was already processed with the
 reconstruction of [TimepixAnalysis](https://github.com/Vindaar/TimepixAnalysis).
@@ -31,6 +31,8 @@ Additionally there are the following optional parameters:
 - `shiftcenter` Shift each hit by x/y pixels.
 - `full2d` Analyze Timepix3 data only in 2D.
 - `full3d` Analyze Timepix3 data in the full 3D approach instead of 3D for the first step and 2D for the second step.
+- `radius` Set the lower and upper normalised radius for the pixel selection around the center of charge in the first step.
+- `weighting` Instead of cutting pixels for the second step weight them to by the distance to the absorption point. Requires radius argument.
 - `overwrite` If the hdf5 file already contains reconstructed angular data, this option activates overwriting it.
 - `weights` Path to a txt file that contains a 256 by 256 matrix with weights for all pixels.
 - `iweights`Path to a txt file that contains a 256 by 256 matrix with weights for all pixels. The weights are inverted'
