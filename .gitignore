@@ -1,5 +1,9 @@
-# PDFs
+# Plots
 *.pdf
+*.png
 
 # Tests
 reco_test.py
+
+# Scripts
+*.sh
