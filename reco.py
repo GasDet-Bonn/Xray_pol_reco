@@ -377,6 +377,9 @@ def main():
             phi2 = np.array(results[:, 1], dtype=np.float64)
             start = results[:, 2]
             end = results[:, 3]
+            absorption_point_x = np.array(results[:, 4], dtype=np.float64)
+            absorption_point_y = np.array(results[:, 5], dtype=np.float64)
+            quality = np.array(results[:, 6], dtype=np.float64)
 
         elif timepix_version == 'Timepix3':
             inputs = list(zip(posx, posy, toa, ftoa, charge, [tpx3_full3d]*len(posx), [velocity]*len(posx), [matrix]*len(posx), [radius_min]*len(posx), [radius_max]*len(posx), [args.weighting]*len(posx)))
@@ -390,13 +393,21 @@ def main():
             results = np.array(results, dtype=object)
             phi1 = np.array(results[:, 0], dtype=np.float64)
             phi2 = np.array(results[:, 1], dtype=np.float64)
-            start = results[:, 2]
-            end = results[:, 3]
+            theta1 = np.array(results[:, 2], dtype=np.float64)
+            theta2 = np.array(results[:, 3], dtype=np.float64)
+            start = results[:, 4]
+            end = results[:, 5]
+            absorption_point_x = np.array(results[:, 6], dtype=np.float64)
+            absorption_point_y = np.array(results[:, 7], dtype=np.float64)
+            quality = np.array(results[:, 8], dtype=np.float64)
 
         dataset_path_firststage = f'reconstruction/{name}/chip_0/angle_firststage'
         dataset_path_secondstage = f'reconstruction/{name}/chip_0/angle_secondstage'
         dataset_path_indices_start = f'reconstruction/{name}/chip_0/start_indices'
         dataset_path_indices_end = f'reconstruction/{name}/chip_0/end_indices'
+        dataset_path_absorption_point_x = f'reconstruction/{name}/chip_0/absorption_point_x'
+        dataset_path_absorption_point_y = f'reconstruction/{name}/chip_0/absorption_point_y'
+        dataset_path_quality= f'reconstruction/{name}/chip_0/quality'
         dt = h5py.special_dtype(vlen=np.dtype('float64'))
 
         if args.output:
@@ -409,10 +420,22 @@ def main():
         try:
             write_dataset(f, dataset_path_firststage, phi1, overwrite=args.overwrite)
             write_dataset(f, dataset_path_secondstage, phi2, overwrite=args.overwrite)
+            write_dataset(f, dataset_path_absorption_point_x, absorption_point_x, overwrite=args.overwrite)
+            write_dataset(f, dataset_path_absorption_point_y, absorption_point_y, overwrite=args.overwrite)
+            write_dataset(f, dataset_path_quality, quality, overwrite=args.overwrite)
             write_dataset(f, dataset_path_indices_start, start, overwrite=args.overwrite, dtype=dt)
             write_dataset(f, dataset_path_indices_end, end, overwrite=args.overwrite, dtype=dt)
         except ValueError as e:
             print(e)
+
+        if timepix_version == 'Timepix3' and not tpx3_2d:
+            dataset_path_firststage_theta = f'reconstruction/{name}/chip_0/theta_firststage'
+            dataset_path_secondstage_theta = f'reconstruction/{name}/chip_0/theta_secondstage'
+            try:
+                write_dataset(f, dataset_path_firststage_theta, theta1, overwrite=args.overwrite)
+                write_dataset(f, dataset_path_secondstage_theta, theta2, overwrite=args.overwrite)
+            except ValueError as e:
+                print(e)
 
 if __name__ == "__main__":
     main()
