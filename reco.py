@@ -193,6 +193,7 @@ def main():
         datafile = os.path.basename(run)
     else:
         print("Please choose a correct data file")
+        return
     angle_offset = args.rotation
     tpx3_2d = args.full2d
     tpx3_full3d = args.full3d
