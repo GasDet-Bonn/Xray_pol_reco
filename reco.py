@@ -6,7 +6,35 @@ import os
 import h5py
 import argparse
 
-def reco(coords, charges, phi_1 = None):
+def copy_hdf5_file(source_file, destination_file, nodes_to_copy=None):
+    if nodes_to_copy is None:
+        nodes_to_copy = []
+
+    # Open the source file
+    with h5py.File(source_file, 'r') as src:
+        # Create the destination file or overwrite it
+        with h5py.File(destination_file, 'w') as dst:
+            # Copy the data
+            def recursive_copy(src_group, dst_group, first_level=False):
+                for name, obj in src_group.items():
+                    if first_level and name not in nodes_to_copy:
+                        continue
+                    if isinstance(obj, h5py.Group):
+                        dst_group.create_group(name)
+                        recursive_copy(obj, dst_group[name])
+                    elif isinstance(obj, h5py.Dataset):
+                        dst_group.create_dataset(name, data=obj[:])
+                    # Copy the attributes
+                    for attr_name, attr_value in obj.attrs.items():
+                        dst_group[name].attrs[attr_name] = attr_value
+
+            # Copy the attributes of the root group
+            for attr_name, attr_value in src.attrs.items():
+                dst.attrs[attr_name] = attr_value
+
+            # Start copying from the root group with first_level flag
+            recursive_copy(src, dst, first_level=True)
+
     # Calculate the center of charge for 2D or 3D and shift the coordinates by the center of charge
     if coords.shape[0] == 2:
         x_pos, y_pos = coords
@@ -183,6 +211,7 @@ def main():
     parser.add_argument('--full2d', action='store_true', help='Analyze Timepix3 data only in 2D')
     parser.add_argument('--full3d', action='store_true', help='Analyze Timepix3 data in the full 3D approach instead of 3D for the first step and 2D for the second step')
     parser.add_argument('--overwrite', action='store_true', help='If the hdf5 file already contains reconstructed angular data, this option activates overwriting it.')
+    parser.add_argument('--output', type=str, help='Instead of storing the data in the input datafile the data is stored in a given output file.')
     args = parser.parse_args()
 
     if args.full2d and args.full3d:
@@ -283,6 +312,12 @@ def main():
         dataset_path_indices_start = f'reconstruction/{name}/chip_0/start_indices'
         dataset_path_indices_end = f'reconstruction/{name}/chip_0/end_indices'
         dt = h5py.special_dtype(vlen=np.dtype('float64'))
+
+        if args.output:
+            f.close()
+            nodes_to_copy = ['reconstruction']
+            copy_hdf5_file(args.runpath, args.output, nodes_to_copy)
+            f = h5py.File(args.output, 'r+')
 
         # Save data to the hdf5 file
         try:

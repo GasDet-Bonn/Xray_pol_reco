@@ -20,7 +20,7 @@ h5py
 ## Usage
 The script can be used by:
 ```
-usage: reco.py [-h] [--velocity VELOCITY] [--rotation ROTATION] [--shiftcenter X Y] [--full2d] [--full3d] [--overwrite] runpath
+usage: reco.py [-h] [--velocity VELOCITY] [--rotation ROTATION] [--shiftcenter X Y] [--full2d] [--full3d] [--overwrite] [--output FILE] runpath
 ```
 The `runpath` is a path to an Hdf5 file that was already processed with the
 reconstruction of [TimepixAnalysis](https://github.com/Vindaar/TimepixAnalysis).
@@ -32,3 +32,4 @@ Additionally there are the following optional parameters:
 - `full2d` Analyze Timepix3 data only in 2D.
 - `full3d` Analyze Timepix3 data in the full 3D approach instead of 3D for the first step and 2D for the second step.
 - `overwrite` If the hdf5 file already contains reconstructed angular data, this option activates overwriting it.
+- `output` Instead of storing the data in the input datafile the data is stored in a given output file.
