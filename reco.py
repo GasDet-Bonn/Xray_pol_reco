@@ -179,6 +179,7 @@ def main():
     parser.add_argument('runpath', type=str, help='Path to the hdf5 file')
     parser.add_argument('--velocity', type=float, help='Drift velocity of electrons in the drift field in µm/ns. Default is 1 µm/ns. Only influences 3D reconstruction.', default=1)
     parser.add_argument('--rotation', type=float, help='Rotation of the input coordinates in the xy plane with respect to the x axis. Given in degrees.', default=0)
+    parser.add_argument('--shiftcenter', type=float, nargs=2, help='Shift each hit by x/y pixels.', default=None)
     parser.add_argument('--full2d', action='store_true', help='Analyze Timepix3 data only in 2D')
     parser.add_argument('--full3d', action='store_true', help='Analyze Timepix3 data in the full 3D approach instead of 3D for the first step and 2D for the second step')
     parser.add_argument('--overwrite', action='store_true', help='If the hdf5 file already contains reconstructed angular data, this option activates overwriting it.')
@@ -203,6 +204,12 @@ def main():
     f = h5py.File(run, 'r+')
     filename = datafile.replace('.h5', '')
 
+    if args.shiftcenter:
+        x_shift, y_shift = args.shiftcenter
+    else:
+        x_shift = None
+        y_shift = None
+
     timepix_version = f['reconstruction'].attrs['TimepixVersion'][0].decode('utf-8')
     reconstruction = f['reconstruction']
     for name in reconstruction:
@@ -210,8 +217,21 @@ def main():
         posx_raw = f.get('reconstruction/' + name + '/chip_0/x')[:]
         posy_raw = f.get('reconstruction/' + name + '/chip_0/y')[:]
         rot = np.radians(angle_offset)
-        posx = posx_raw * np.cos(rot) - posy_raw * np.sin(rot)
-        posy = posx_raw * np.sin(rot) + posy_raw * np.cos(rot)
+        posx = (posx_raw * np.cos(rot) - posy_raw * np.sin(rot))
+        posy = (posx_raw * np.sin(rot) + posy_raw * np.cos(rot))
+        if args.shiftcenter:
+            posx = posx - x_shift
+            posy = posy - y_shift
+            filtered_x_coords = []
+            filtered_y_coords = []
+            print("Shift coordinates")
+            for x_arr, y_arr in tqdm(zip(posx, posy), total=len(posx)):
+                mask = (x_arr >= 0) & (x_arr <= 255) & (y_arr >= 0) & (y_arr <= 255)
+                filtered_x_coords.append(x_arr[mask])
+                filtered_y_coords.append(y_arr[mask])
+
+            posx = np.array(filtered_x_coords, dtype=object)
+            posy = np.array(filtered_y_coords, dtype=object)
 
         # Fot Timepix3 use additionally the timestamp per pixel
         if timepix_version == 'Timepix3':
