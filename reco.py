@@ -245,7 +245,7 @@ def main():
             charge = f.get('reconstruction/' + name + '/chip_0/ToT')[:]
 
         # Get the number of cpu cores for the multiprocessing
-        num_threads = multiprocessing.cpu_count()
+        num_threads = multiprocessing.cpu_count() - 1
 
         print(timepix_version)
         if timepix_version == 'Timepix1' or tpx3_2d:
